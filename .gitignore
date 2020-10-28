@@ -1,3 +1,5 @@
 .vscode
-data
+data/*
+external/*
 !data/*.md
+*.pyc
