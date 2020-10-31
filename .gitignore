@@ -3,3 +3,4 @@ data/*
 external/*
 !data/*.md
 *.pyc
+*__pycache__

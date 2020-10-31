@@ -1,5 +1,5 @@
 #keyboard
 #mouse
-sneakysnek
+#sneakysnek
 pynput
 pyperclip
