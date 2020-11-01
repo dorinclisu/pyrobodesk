@@ -31,11 +31,14 @@ EventTypeAnnotation = Union [
 ]
 
 class MyInputEvent():
-    def __init__(self, event: EventTypeAnnotation, timestamp: Optional[float]=None):
+    def __init__(self, event: EventTypeAnnotation, timestamp: Optional[float]=None, time_delta: Optional[float]=None):
         self.event = event
 
         if timestamp is None:
             timestamp = time.time()
+
+        if time_delta:
+            timestamp -= time_delta
 
         self.timestamp = timestamp
 
@@ -82,7 +85,7 @@ class FunctionManager:
                 myfunction = self.load(filepath)
                 myfunctions[name] = myfunction
 
-                def func(rate: float=1, **kwargs):
+                def func(rate: float=1, **kwargs) -> Dict[str, str]:
                     return self.play(name, rate, **kwargs)
 
                 setattr(self, name, func)
@@ -114,8 +117,8 @@ class FunctionManager:
             print('Canceled delete')
 
 
-    def read_variable_name(self, kind: str='Variable', suppress: bool=True) -> str:
-        print('{} name: '.format(kind), end='', flush=True)
+    def read_variable_name(self, kind: str='Variable name', suppress: bool=True) -> str:
+        print('{} (ESC to cancel): '.format(kind), end='', flush=True)
 
         chars: List[str] = []
 
@@ -141,8 +144,15 @@ class FunctionManager:
                 except AttributeError:
                     pass
 
+        def on_release(key):
+            if key == keyboard.Key.esc:
+                chars.clear()
+                print('')
+                return False
+
         with keyboard.Listener(
                 on_press=on_press,
+                on_release=on_release,
                 suppress=suppress
             ) as listener:
             listener.join()
@@ -155,52 +165,84 @@ class FunctionManager:
         if os.path.isfile(filename):
             raise FileExistsError('Function "{}" already exists'.format(function_name))
 
+        input_hotkey_str = '<ESC>+I'
+        output_hotkey_str ='<ESC>+O'
+
         print('Starting recording ...')
-        print('Press O + ⌫ to mark clipboard content as output variable')
-        print('Press I + ⌫ to mark paste content from input variable')
-        print('Press ESC to stop')
-        #TODO: configurable hotkeys
+        print('Press {} to mark clipboard content as output variable'.format(output_hotkey_str))
+        print('Press {} to mark paste content from input variable'.format(input_hotkey_str))
+        print('Press <ESC> to stop')
 
         myevents: List[MyInputEvent] = []
         input_variables: List[str] = []
         output_variables: List[str] = []
 
         stop_event = threading.Event()
-        i_pressed_event = threading.Event()
-        o_pressed_event = threading.Event()
-        var_event_timestamp: Optional[float] = None
+        input_event = threading.Event()
+        output_event = threading.Event()
+        time_delta: float = 0
+
+        def on_input():
+            input_event.set()
+            stop_event.set()
+
+        def on_output():
+            output_event.set()
+            stop_event.set()
+
+        input_hotkey = keyboard.HotKey(
+            keyboard.HotKey.parse(input_hotkey_str),
+            on_input)
+
+        output_hotkey = keyboard.HotKey(
+            keyboard.HotKey.parse(output_hotkey_str),
+            on_output)
 
         def on_press(key):
+            input_hotkey.press(listener.canonical(key))
+            output_hotkey.press(listener.canonical(key))
+
+            myevent = MyInputEvent(KeyPressEvent(key), time_delta=time_delta)
+            myevents.append(myevent)
+
+        def on_release(key):
             if key == keyboard.Key.esc:
                 stop_event.set()
                 return False
 
-            elif key == keyboard.KeyCode(char='i'):
-                i_pressed_event.set()
+            input_hotkey.release(listener.canonical(key))
+            output_hotkey.release(listener.canonical(key))
 
-            elif key == keyboard.KeyCode(char='o'):
-                o_pressed_event.set()
-
-            elif key == keyboard.Key.backspace:
-                if i_pressed_event.is_set() or o_pressed_event.is_set():
-                    var_event_timestamp = time.time()
-                    stop_event.set()
-                    return False
-
-            myevent = MyInputEvent(KeyPressEvent(key))
+            myevent = MyInputEvent(KeyReleaseEvent(key), time_delta=time_delta)
             myevents.append(myevent)
 
-        def on_release(key):
-            if key == keyboard.KeyCode(char='i'):
-                i_pressed_event.clear()
+        last_move_myevent = None
+        def on_mouse_event(event):
+            nonlocal last_move_myevent
 
-            elif key == keyboard.KeyCode(char='o'):
-                o_pressed_event.clear()
+            if isinstance(event, mouse.Events.Move):
+                myevent = MyInputEvent(MoveEvent(x=event.x, y=event.y), time_delta=time_delta)
 
-            myevent = MyInputEvent(KeyReleaseEvent(key))
+                if last_move_myevent:
+                    if myevent.timestamp - last_move_myevent.timestamp < 0.1:
+                        return # no need to keep all move events
+
+                last_move_myevent = myevent
+
+            elif isinstance(event, mouse.Events.Click):
+                myevent = MyInputEvent(ClickEvent(x=event.x, y=event.y, button=event.button, pressed=event.pressed), time_delta=time_delta)
+
+            elif isinstance(event, mouse.Events.Scroll):
+                myevent = MyInputEvent(ScrollEvent(x=event.x, y=event.y, dx=event.dx, dy=event.dy), time_delta=time_delta)
+
+            else:
+                raise RuntimeError('Unrecognized mouse event: {}'.format(event))
+
             myevents.append(myevent)
 
         while True:
+            stop_event.clear()
+
             listener = keyboard.Listener(
                 on_press=on_press,
                 on_release=on_release
@@ -208,55 +250,52 @@ class FunctionManager:
             listener.start()
 
             with mouse.Events() as events:
-                last_move_event = None
                 while True:
                     if stop_event.is_set():
-                        stop_event.clear()
+                        listener.stop()
                         break
-
                     event = events.get(0.5)
                     if event is None:
                         continue
+                    on_mouse_event(event)
 
-                    if isinstance(event, mouse.Events.Move):
-                        myevent = MyInputEvent(MoveEvent(x=event.x, y=event.y))
+            if input_event.is_set():
+                input_event.clear()
 
-                        if last_move_event:
-                            if myevent.timestamp - last_move_event.timestamp < 0.1:
-                                continue # no need to keep all move events
-                        last_move_event = myevent
+                t0 = time.time()
+                name = self.read_variable_name(kind='Input variable name')
+                if not name:
+                    continue
 
-                    elif isinstance(event, mouse.Events.Click):
-                        myevent = MyInputEvent(ClickEvent(x=event.x, y=event.y, button=event.button, pressed=event.pressed))
+                example_value = self.read_variable_name(kind='Input example value')
+                if example_value:
+                    pyperclip.copy(example_value)
 
-                    elif isinstance(event, mouse.Events.Scroll):
-                        myevent = MyInputEvent(ScrollEvent(x=event.x, y=event.y, dx=event.dx, dy=event.dy))
-
-                    else:
-                        raise RuntimeError('Unrecognized mouse event: {}'.format(event))
-
-                    myevents.append(myevent)
-
-            if i_pressed_event.is_set():
-                i_pressed_event.clear()
-                name = self.read_variable_name(kind='INPUT variable')
+                deadtime = time.time() - t0
+                time_delta += deadtime
 
                 if name in input_variables:
                     print('WARNING: input variable "{}" already exists'.format(name))
                 else:
                     input_variables.append(name)
-                    myevent = MyInputEvent(PasteFromVarEvent(name), timestamp=var_event_timestamp)
+                    myevent = MyInputEvent(PasteFromVarEvent(name), time_delta=time_delta)
                     myevents.append(myevent)
 
-            elif o_pressed_event.is_set():
-                o_pressed_event.clear()
-                name = self.read_variable_name(kind='OUTPUT variable')
+            elif output_event.is_set():
+                output_event.clear()
+
+                t0 = time.time()
+                name = self.read_variable_name(kind='Output variable name')
+                if not name:
+                    continue
+                deadtime = time.time() - t0
+                time_delta += deadtime
 
                 if name in output_variables:
                     print('WARNING: output variable "{}" already exists'.format(name))
                 else:
                     output_variables.append(name)
-                    myevent = MyInputEvent(CopyToVarEvent(name), timestamp=var_event_timestamp)
+                    myevent = MyInputEvent(CopyToVarEvent(name), time_delta=time_delta)
                     myevents.append(myevent)
             else:
                 break
@@ -336,7 +375,7 @@ class FunctionManager:
             elif isinstance(event, PasteFromVarEvent):
                 input_value = kwargs.get(event, None) # event is just a str subclass
                 if input_value:
-                    key_controller.type(str(input_value))
+                    pyperclip.copy(str(input_value))
                 else:
                     raise ValueError('Input argument "{}" not found'.format(event))
 
@@ -360,28 +399,32 @@ if __name__ == '__main__':
 
     manager = FunctionManager(args.path)
 
-    if args.record:
-        manager.record(function_name=args.record)
+    try:
+        if args.record:
+            manager.record(function_name=args.record)
 
-    if args.play:
-        inputs = {}
-        if args.inputs:
-            try:
-                nameval_pair_list = args.inputs.split(',')
-                for nameval in nameval_pair_list:
-                    [name, val] = nameval.split('=')
-                    inputs[name] = val
-            except ValueError:
-                raise ValueError('Inputs must be in the form of: name1=value1,name2=value2,...,nameN=valueN')
+        if args.play:
+            inputs = {}
+            if args.inputs:
+                try:
+                    nameval_pair_list = args.inputs.split(',')
+                    for nameval in nameval_pair_list:
+                        [name, val] = nameval.split('=')
+                        inputs[name] = val
+                except ValueError:
+                    raise ValueError('Inputs must be in the form of: name1=value1,name2=value2,...,nameN=valueN')
 
-        output = manager.play(function_name=args.play, rate=args.rate, **inputs)
-        print(output)
+            output = manager.play(function_name=args.play, rate=args.rate, **inputs)
+            print(output)
 
-    elif args.list:
-        manager.list()
+        elif args.list:
+            manager.list()
 
-    elif args.delete:
-        manager.delete(args.delete)
+        elif args.delete:
+            manager.delete(args.delete)
+
+    except KeyboardInterrupt:
+        print('\nCanceled')
 
     #manager.test()
     #name = manager.read_variable_name()
