@@ -6,7 +6,7 @@ python -m pip install .
 ```
 
 ## Automate desktop work
-This project is intended for automating repetitive tasks that involve graphical user interface manipulation, which cannot be typically automated using a CLI or API.
+This project is intended for automating repetitive tasks that involve graphical user interface manipulation, which cannot be typically automated using a CLI or API. Example at https://www.youtube.com/watch?v=Kom8QjVBJD0
 
 ## An innovative framework
 Powerful, flexible, efficient. We can have all these, without giving up ease of use.
