@@ -42,8 +42,8 @@ class MyInputEvent():
 
         self.timestamp = timestamp
 
-#TODO: rename Function to MyFunction
-class Function():
+
+class MyFunction():
     def __init__(self, events: List[MyInputEvent], input_variables: List[str]=[], output_variables: List[str]=[]):
         self.events = events
         self.input_variables = input_variables
@@ -61,19 +61,19 @@ class FunctionManager:
             os.makedirs(data_path)
 
 
-    def save(self, myfunction: Function, filepath: str):
+    def save(self, myfunction: MyFunction, filepath: str):
         #TODO: use more robust serialization
         with open(filepath, 'wb') as file:
             pickle.dump(myfunction, file)
 
 
-    def load(self, filepath: str) -> Function:
+    def load(self, filepath: str) -> MyFunction:
         with open(filepath, 'rb') as file:
             myfunction = pickle.load(file)
         return myfunction
 
 
-    def load_functions(self) -> Dict[str, Function]:
+    def load_functions(self) -> Dict[str, MyFunction]:
         myfunctions = {}
 
         for name in os.listdir(self.data_path):
@@ -301,7 +301,7 @@ class FunctionManager:
                 break
 
         if myevents:
-            myfunction = Function(events=myevents, input_variables=input_variables, output_variables=output_variables)
+            myfunction = MyFunction(events=myevents, input_variables=input_variables, output_variables=output_variables)
             self.save(myfunction, filename)
         else:
             print('WARNING: no input events detected!')
