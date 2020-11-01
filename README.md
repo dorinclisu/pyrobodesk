@@ -2,7 +2,7 @@
 ```
 git clone https://github.com/dorinclisu/pyrobodesk.git
 cd pyrobodesk
-python setup.py install
+python -m pip install .
 ```
 
 ## Automate desktop work

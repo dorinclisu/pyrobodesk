@@ -1,5 +1,0 @@
-#keyboard
-#mouse
-#sneakysnek
-pynput
-pyperclip

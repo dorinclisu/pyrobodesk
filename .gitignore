@@ -1,6 +1,6 @@
 .vscode
 data
-external/*
+external
 *.pyc
 *__pycache__
 *.egg-info

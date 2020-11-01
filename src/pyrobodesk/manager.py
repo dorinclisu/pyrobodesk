@@ -168,8 +168,8 @@ class FunctionManager:
         output_hotkey_str ='<ESC>+O'
 
         print('Starting recording ...')
-        print('Press {} to mark clipboard content as output variable'.format(output_hotkey_str))
-        print('Press {} to mark paste content from input variable'.format(input_hotkey_str))
+        print('Press {} to put clipboard content into output variable'.format(output_hotkey_str))
+        print('Press {} to put input variable into clipboard'.format(input_hotkey_str))
         print('Press <ESC> to stop')
 
         myevents: List[MyInputEvent] = []
