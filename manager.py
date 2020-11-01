@@ -8,7 +8,6 @@ from typing import Dict, List, Optional, Union
 
 import pyperclip
 from pynput import keyboard, mouse
-#TODO: rename recorder.py to manager.py
 
 
 
